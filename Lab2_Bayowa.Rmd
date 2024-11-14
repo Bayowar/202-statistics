@@ -1,0 +1,573 @@
+---
+title: "lab__2"
+author: "Bayowa Onabajo"
+date: "2024-10-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+
+
+library(tidyverse)
+library(dplyr)
+library(critstats)
+
+
+```
+
+
+
+# Introduction 
+
+## I used the tidycensus package which includes the American Community survey database estimates provided by the U.S. Census Bureau in R. 
+##I am using data on median household income and median age for Black adults across U.S. states from the year 2022.
+
+# Variables
+
+## I used median household income for Black adults (B19013B_001) across U.S. states and median age of Black adults (B01002B_003E) in each state.
+
+# Hypothesis and Research question 
+
+## Testing if states with older Black populations have higher or lower incomes than those with younger Black populations.
+## My research question is "Does age grouping determine the income of black population across U.S. states/regions?"
+
+# Analysis
+
+## Usage of the tidycensus package to collate data on median household income and median age for Black adults across U.S. states for the year 2022.
+## Merging the datasets by state (GEOID). Clean the data by removing rows with missing values and categorize the states based on the median age of Black adults into two groups: "Younger Adults" (under 40years) and "Older Adults" (40years and above).
+## Summarize statistics (mean, median) for income within each age group and region, then create a bar plot to visualize income differences.
+## Conduct a t-test and correlation test to determine whether the difference in median income between younger and older Black adults is statistically significant across regions.
+## Use ggplot2 to visualize the income disparities between younger and older Black adults across different U.S. states/regions
+## Categorize the median age of Black adults into more than two groups and analyze with further after viewing median income distribution by age groups across U.S states.
+## Conduct anova test to determine significance of the relationship between median income and age group amongst black adults in the U.S.
+
+
+# Potential limitation
+
+## Splitting age into only two groups "younger vs. older" might overlook income differences within other age sub-groups.
+## Data values cover a limited amount of years based on the "acs".
+## Working with median data values limits the statistical power as opposed to mean data values 
+
+```{r}
+# Load packages/ libraries here
+library(tidyverse)
+library(tidycensus)
+census_api_key("e06a3ef2522b01fbf59f0fb986f724a11ed67dd2")
+
+# Get Black median income data here
+black_income_data <- get_acs(
+  geography = "state",
+  variables = c(median_income = "B19013B_001"),
+  survey = "acs5",
+  year = 2022
+)
+
+# Get Black median age data here
+age_data <- get_acs(
+  geography = "state",
+  variables = c(median_age_black = "B01002B_003E"), 
+  survey = "acs5",
+  year = 2022
+)
+
+# Combine data with GEOID here
+combined_data <- merge(black_income_data, age_data, by = "GEOID")
+
+# Clean rows with missing values here
+combined_data_clean <- combined_data %>%
+  filter(!is.na(estimate.x), !is.na(estimate.y))
+
+black_income_data
+#age_data
+
+
+
+```
+
+
+## I noticed no missing values in both the median income and median age columns.
+```{r}
+#checking for missing values
+sum(is.na(combined_data_clean))
+```
+
+
+```{r}
+sum(is.na(age_data))
+```
+
+
+```{r}
+sum(is.na(black_income_data))
+sapply(black_income_data, function(x) sum(is.na(x)))
+```
+
+
+
+```{r}
+tail(age_data)
+```
+
+
+
+
+
+## Black Median income by Age groups across U.S states and T-test to ascertain significance.
+```{r}
+library(tidycensus)
+library(dplyr)
+library(ggplot2)
+
+# Get median household income for Black households by state
+black_income_data <- get_acs(
+  geography = "state",
+  variables = c(median_income = "B19013B_001"),  
+  survey = "acs5",
+  year = 2022
+)
+
+# Get median age of Black adults by state
+age_data <- get_acs(
+  geography = "state",
+  variables = c(median_age_black = "B01002B_003E"),
+  survey = "acs5",
+  year = 2022
+)
+
+# Combine the income and age data by "GEOID"
+combined_data <- merge(black_income_data, age_data, by = "GEOID")
+
+# Inspect column names
+colnames(combined_data)
+
+# Rename columns
+combined_data_clean <- combined_data %>%
+  rename(median_income = estimate.x, median_age = estimate.y, state = NAME.x)
+
+# Clean data by removing missing values
+combined_data_clean <- combined_data_clean %>%
+  filter(!is.na(median_income), !is.na(median_age))
+
+# Classify the states into Younger and Older age groups with median age < 40years or >= 40years
+combined_data_clean <- combined_data_clean %>%
+  mutate(age_group = ifelse(median_age < 40, "Younger Adults", "Older Adults"))
+
+# blackmedianincome by age groups across states 
+summary_income_age <- combined_data_clean %>%
+  group_by(state, age_group) %>%
+  summarize(median_income = median(median_income, na.rm = TRUE))
+
+# Plot income by age groups across states (Stacked Bar Plot)
+ggplot(summary_income_age, aes(x = state, y = median_income, fill = age_group)) +
+  geom_col(position = "stack") +  # Use geom_col with position stack
+  labs(title = "Median Income by Age Group for Black Adults Across States",
+       x = "State",
+       y = "Median Income") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+grouped_data <- combined_data_clean %>%
+  group_by(state, age_group) %>%
+  summarize(mean_income = mean(median_income, na.rm = TRUE))
+#grouped data
+
+t_test_results <- t.test(mean_income ~ age_group, data = grouped_data)
+print(t_test_results)
+
+```
+
+
+```{r}
+library(tidycensus)
+library(dplyr)
+library(ggplot2)
+# Calculate summary statistics
+summary_stats <- combined_data_clean %>%
+  summarize(mean_income = mean(median_income, na.rm = TRUE),
+            sd_income = sd(median_income, na.rm = TRUE),
+            mean_age = mean(median_age, na.rm = TRUE),
+            sd_age = sd(median_age, na.rm = TRUE))
+
+# Print summary statistics
+print(summary_stats)
+```
+
+
+## Correlation test
+```{r}
+#correlation coefficient
+correlation <- cor(combined_data_clean$median_income, combined_data_clean$median_age, use = "complete.obs")
+
+# Print the correlation coefficient
+print(correlation)
+
+```
+
+
+## Boxplot for binary grouping younger and older adults.
+```{r}
+ggplot(combined_data_clean, aes(x = median_income, y = age_group)) +
+  geom_boxplot() +
+  labs(title = "Distribution of Median Income for Black Adults by Age Group",
+       x = "Median Income",
+       y = "Age group") +
+  theme_minimal()
+
+```
+
+
+```{r}
+my_boxplot <- ggplot(combined_data_clean, aes(x = median_income, y = age_group)) +
+  geom_boxplot() +
+  labs(title = "Distribution of Median Income for Black Adults by Age Group",
+       x = "Median Income",
+       y = "Age group") +
+  theme_minimal()
+ggsave("my_boxplot.pdf", plot = my_boxplot)
+```
+
+
+
+
+```{r}
+# Check the first few rows of the summarized data
+
+#colnames(combined_data)
+head(summary_income_age)
+#tail(summary_income_age)
+
+```
+
+## Median income by age group(<40years and >40years) and T-testing.
+```{r}
+ggplot(grouped_data, aes(x = age_group, y = mean_income, fill = age_group)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Median Income by Age Group",
+       x = "Age Group",
+       y = "Median Income (USD)") +
+  theme_minimal()
+
+t_test_results <- t.test(mean_income ~ age_group, data = grouped_data)
+print(t_test_results)
+```
+
+
+
+
+## Median income across age groups(<30years,30-49 and >50years) and anova testing.
+```{r}
+# Load necessary libraries
+library(tidycensus)
+library(dplyr)
+library(ggplot2)
+
+
+
+# Classify the states into three age groups: Younger Adults, Middle-Aged Adults, Older Adults
+combined_data_clean <- combined_data_clean %>%
+  mutate(age_group = case_when(
+    median_age < 30 ~ "Younger Adults (<=29)",
+    median_age >= 30 & median_age < 50 ~ "Middle-Aged Adults (30-49)",
+    median_age >= 50 ~ "Older Adults (>=50)"
+  ))
+
+
+# Remove rows with missing values in median_income
+combined_data_clean <- combined_data_clean %>%
+  filter(!is.na(median_income))
+
+# Summarize median income by age groups
+summary_income_age_group <- combined_data_clean %>%
+  group_by(age_group) %>%
+  summarize(mean_income = mean(median_income, na.rm = TRUE))
+
+# Plot the median income by age group
+ggplot(summary_income_age_group, aes(x = age_group, y = mean_income, fill = age_group)) +
+  geom_col(na.rm = TRUE) +
+  labs(title = "Median Income by Age Groups for Black Adults",
+       x = "Age Group",
+       y = "Median Income") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Perform ANOVA to compare median incomes across age groups
+anova_results <- aov(median_income ~ age_group, data = combined_data_clean)
+
+# Print the ANOVA summary
+summary(anova_results)
+
+```
+
+## Box plot across age groups(<30years,30-49 and >50years)
+```{r}
+ggplot(combined_data_clean, aes(x = median_income, y = age_group)) +
+  geom_boxplot() +
+  labs(title = "Distribution of Median Income for Black Adults by Age Group",
+       x = "Median Income",
+       y = "Age group") +
+  theme_minimal()
+```
+
+
+
+## Median income for age groups(<30years,30-49 and >50years) across U.S states and anova testing.
+
+```{r}
+# Load necessary libraries
+library(tidycensus)
+library(dplyr)
+library(ggplot2)
+
+# Get median household income for Black households by state
+black_income_data <- get_acs(
+  geography = "state", 
+  variables = c(median_income = "B19013B_001"),  
+  survey = "acs5",
+  year = 2022
+)
+
+# Get median age of Black adults by state
+age_data <- get_acs(
+  geography = "state",
+  variables = c(median_age_black = "B01002B_003E"),
+  survey = "acs5",
+  year = 2022
+)
+
+# Combine the income and age data by "GEOID"
+combined_data <- merge(black_income_data, age_data, by = "GEOID")
+
+# Rename columns for clarity
+combined_data_clean <- combined_data %>%
+  rename(median_income = estimate.x, median_age = estimate.y, state = NAME.x)
+
+# Clean data by removing rows with missing values
+combined_data_clean <- combined_data_clean %>%
+  filter(!is.na(median_income), !is.na(median_age))
+
+# Classify the states into three age groups: Younger Adults, Middle-Aged Adults, Older Adults
+combined_data_clean <- combined_data_clean %>%
+  mutate(age_group = case_when(
+    median_age < 30 ~ "Younger Adults (<=29)",
+    median_age >= 30 & median_age < 50 ~ "Middle-Aged Adults (30-49)",
+    median_age >= 50 ~ "Older Adults (>=50)"
+  ))
+
+# Plot the median age by U.S. states, grouped by age group
+ggplot(combined_data_clean, aes(x = reorder(state, median_age), y = median_age, fill = age_group)) +
+  geom_col(na.rm = TRUE) +
+  labs(title = "Median Age of Black Adults by U.S. States",
+       x = "State",
+       y = "Median Age") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+# Perform ANOVA to compare median incomes across age groups
+anova_results <- aov(median_income ~ age_group, data = combined_data_clean)
+
+# Print the ANOVA summary
+summary(anova_results)
+
+```
+
+
+
+## Median income across age groups(<30years,30-39,40-49 and >50years) and anova testing
+```{r}
+# Load necessary libraries
+library(tidycensus)
+library(dplyr)
+library(ggplot2)
+
+
+
+# Classify the states into four age groups: 20s, 30s, 40s, and 50 and above
+combined_data_clean <- combined_data_clean %>%
+  mutate(age_group = case_when(
+    median_age < 30 ~ "Very-young adults 20-29",
+    median_age >= 30 & median_age < 40 ~ "Young adults 30-39",
+    median_age >= 40 & median_age < 50 ~ "Old adults 40-49",
+    median_age >= 50 ~ "Older adults 50 and above"
+  ))
+
+
+# Remove rows with missing values in median_income
+combined_data_clean <- combined_data_clean %>%
+  filter(!is.na(median_income))
+
+# Summarize median income by age groups
+summary_income_age_group <- combined_data_clean %>%
+  group_by(age_group) %>%
+  summarize(mean_income = mean(median_income, na.rm = TRUE))
+
+# Plot the median income by age group
+ggplot(summary_income_age_group, aes(x = age_group, y = mean_income, fill = age_group)) +
+  geom_col(na.rm = TRUE) +
+  labs(title = "Median Income by Age Groups for Black Adults",
+       x = "Age Group",
+       y = "Median Income") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Perform ANOVA to compare median incomes across age groups
+anova_results <- aov(median_income ~ age_group, data = combined_data_clean)
+
+# Print the ANOVA summary
+summary(anova_results)
+
+```
+
+
+
+## Box plot for age groups(<30years,30-39,40-49 and >50years)
+```{r}
+ggplot(combined_data_clean, aes(x = median_income, y = age_group)) +
+  geom_boxplot() +
+  labs(title = "Distribution of Median Income for Black Adults by Age Group",
+       x = "Median Income",
+       y = "Age group") +
+  theme_minimal()
+```
+
+
+
+## Median income for age groups(<30years,30-39,40-49 and >50years) across U.S states and anova testing.
+
+```{r}
+# Load necessary libraries
+library(tidycensus)
+library(dplyr)
+library(ggplot2)
+
+# Classify the states into four age groups: 20s, 30s, 40s, and 50 and above
+combined_data_clean <- combined_data_clean %>%
+  mutate(age_group = case_when(
+    median_age < 30 ~ "20-29",
+    median_age >= 30 & median_age < 40 ~ "30-39",
+    median_age >= 40 & median_age < 50 ~ "40-49",
+    median_age >= 50 ~ "50 and above"
+  ))
+
+# Remove rows with missing values in median_age
+combined_data_clean <- combined_data_clean %>%
+  filter(!is.na(median_age))
+
+# Plot the median age against U.S. states, grouped by age group
+ggplot(combined_data_clean, aes(x = reorder(state, median_age), y = median_age, fill = age_group)) +
+  geom_col(na.rm = TRUE) +
+  labs(title = "Median Age of Black Adults by U.S. States",
+       x = "State",
+       y = "Median Age") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Perform ANOVA to compare median incomes across age groups
+anova_results <- aov(median_income ~ age_group, data = combined_data_clean)
+
+# Print the ANOVA summary
+summary(anova_results)
+
+#correlation coefficient
+correlation <- cor(combined_data_clean$median_income, combined_data_clean$median_age, use = "complete.obs")
+
+# Print the correlation coefficient
+print(correlation)
+
+
+```
+
+## Black median income for older and young adults(<40 years and >40 years) across U.S regions.
+```{r}
+# Load necessary libraries
+library(tidycensus)
+library(dplyr)
+library(ggplot2)
+library(broom)
+
+# Get median household income for Black households by state
+black_income_data <- get_acs(
+  geography = "state", 
+  variables = c(median_income = "B19013B_001"), 
+  survey = "acs5", 
+  year = 2022
+)
+
+# Get median age of Black adults by state
+age_data <- get_acs(
+  geography = "state",
+  variables = c(median_age_black = "B01002B_003E"),
+  survey = "acs5",
+  year = 2022
+)
+
+# Combine the income and age data by "GEOID"
+combined_data <- merge(black_income_data, age_data, by = "GEOID")
+
+# Rename columns for clarity
+combined_data_clean <- combined_data %>%
+  rename(median_income = estimate.x, median_age = estimate.y, state = NAME.x)
+
+# Clean data by removing rows with missing values
+combined_data_clean <- combined_data_clean %>%
+  filter(!is.na(median_income), !is.na(median_age))
+
+# Classify the states into Younger and Older age groups (median age < 40years vs. >= 40years)
+combined_data_clean <- combined_data_clean %>%
+  mutate(age_group = ifelse(median_age < 40, "Younger Adults", "Older Adults"))
+
+# Assign regions to states
+regions <- data.frame(
+  state = state.name,
+  region = state.region
+)
+
+# Merge region data with the dataset
+combined_data_clean <- merge(combined_data_clean, regions, by.x = "state", by.y = "state")
+
+# Summarize median income by age group across regions
+summary_income_region <- combined_data_clean %>%
+  group_by(region, age_group) %>%
+  summarize(mean_income = mean(median_income, na.rm = TRUE))
+
+# Plot income by age group across regions
+ggplot(summary_income_region, aes(x = region, y = mean_income, fill = age_group)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Median Income by Age Group for Black Adults Across U.S. Regions",
+       x = "Region",
+       y = "Median Income") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Filter regions where both age groups ("Younger Adults" and "Older Adults") are present
+valid_regions <- combined_data_clean %>%
+  group_by(region) %>%
+  filter(n_distinct(age_group) == 2)
+
+# Check if we have valid data for the test
+print(valid_regions)
+
+
+
+```
+
+# Relationship between my variables.
+
+## In the bar plot and summary statistics for two groups, older Black adults aged 40years and above generally tend to have lower median incomes compared to younger Black adults under 40years across most U.S. states/regions.
+## The above bar plot supports the data found in my plot for three groups where very young adults and young adults have a higher median income than older adults and the spread across U.S states also corroborates this.
+
+# Relationship to research question.
+
+## With a binary grouping of my age data variables the results show the relationship between median income and age groups is not statistically significant with a p-value of 0.1948 with the t-test.My result also shows that there's a weak negative relationship (correlation coefficient: -0.1993922) between black median income and black median age which means as the median age of Black adults in a state increases, there's a slight tendency for the median income to decrease, but this relationship is not very strong.
+## This is in contrast to my test done with a triad grouping and more grouping of my data which shows the relationship between black median income and age is statistically significant with a p-value of 0.0206. This could mean that age group has an impact on median age or there is a significant relationship with median age for black adults across the U.S.
+
+# Limitations.
+
+## Less statistical power when using the median data values.The statistical power is less compared to using the mean data values.
+## Interpretation of the results might differ slightly when using median income instead of the mean. For example, the coefficient in a correlation model using median income might not have the same interpretation as the coefficient using the mean.
+## The spread of my black median age doesnt give me values greater than 50 years therefore reducing the power of my study. 

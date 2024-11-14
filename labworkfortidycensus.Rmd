@@ -1,0 +1,315 @@
+---
+title: "labwork_tidycensus"
+author: "Bayowa"
+date: "2024-11-13"
+output: github_document
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidycensus)
+
+# Set your Census API key
+census_api_key("e06a3ef2522b01fbf59f0fb986f724a11ed67dd2",overwrite= TRUE)
+
+# View available variables for 5-year ACS data
+acs_variables <- load_variables(year = 2022, dataset = "acs5")
+print(acs_variables)
+View(acs_variables)
+```
+
+
+
+
+# Block to get city details using city codes,variables, data year
+```{r}
+# Load necessary libraries
+library(tidycensus)
+library(dplyr)
+
+# Set your Census API key
+census_api_key("e06a3ef2522b01fbf59f0fb986f724a11ed67dd2", overwrite = TRUE)
+
+# Define a helper function to handle state abbreviations, full names, and FIPS codes
+get_state_fips <- function(input_states) {
+  # Data frame of state names, abbreviations, and FIPS codes
+  state_info <- data.frame(
+    state_name = c(state.name, "District of Columbia"),
+    state_abb = c(state.abb, "DC"),
+    fips_code = sprintf("%02d", c(1:51)) # FIPS codes 01 to 51
+  )
+  
+  # Identify if input is FIPS, abbreviation, or full name, and return FIPS code
+  fips_codes <- sapply(input_states, function(state) {
+    if (state %in% state_info$fips_code) {
+      return(state)  # Already a FIPS code
+    } else if (state %in% state_info$state_abb) {
+      return(state_info$fips_code[state_info$state_abb == state])
+    } else if (state %in% state_info$state_name) {
+      return(state_info$fips_code[state_info$state_name == state])
+    } else {
+      stop("Invalid state input: ", state)
+    }
+  })
+  
+  return(fips_codes)
+}
+
+# Define the states you're interested in, using FIPS codes, abbreviations, or full names
+input_states <- c("36", "SC", "Virginia", "48") # Example FIPS, abbreviation, and full name
+
+# Convert input to FIPS codes
+fips_states <- get_state_fips(input_states)
+
+# Define the range of years, e.g., 2010 to 2022
+years <- 2010:2022
+
+# Initialize an empty dataframe to store results
+black_data <- data.frame()
+
+# Loop through each year and get the ACS data for Black median income and Black median age
+for (year in years) {
+  
+  # Skip the year 2020
+  if (year == 2020) {
+    next  # Skip this iteration of the loop
+  }
+  
+  # Get median household income for Black population
+  income_data <- get_acs(geography = "state", 
+                         variables = "B19013B_001",  # Median household income for Black
+                         state = fips_states, 
+                         year = year, 
+                         survey = "acs1")  # 1-year estimates for each year
+  
+  # Add the 'year' column to income data
+  income_data <- income_data %>%
+    mutate(year = year)  # Add the current year to the dataset
+  
+  # Get median age for Black population
+  age_data <- get_acs(geography = "state", 
+                      variables = "B01002B_001",  # Median age for Black
+                      state = fips_states, 
+                      year = year, 
+                      survey = "acs1")
+  
+  # Add the 'year' column to age data
+  age_data <- age_data %>%
+    mutate(year = year)  # Add the current year to the dataset
+  
+  # Combine both datasets for that year
+  combined_data <- income_data %>%
+    rename(median_income = estimate) %>%
+    left_join(age_data %>% rename(median_age = estimate), by = c("GEOID", "NAME", "year"))
+  
+  # Add the combined data to the overall dataframe
+  black_data <- bind_rows(black_data, combined_data)
+}
+
+# View the resulting dataset with all the required years' data
+black_data
+```
+
+
+# Block of code to get city details using specific city fips code,abbreviation, variables and dataset year
+```{r}
+# Load necessary libraries
+library(tidycensus)
+library(dplyr)
+
+# Set your Census API key
+census_api_key("e06a3ef2522b01fbf59f0fb986f724a11ed67dd2", overwrite = TRUE)
+
+# Load the correct state information from tidycensus package
+state_info <- tigris::fips_codes %>%
+  distinct(state, state_code, state_name) %>%
+  rename(state_abb = state, fips_code = state_code)
+
+# Function to get state abbreviation from FIPS code or state abbreviation
+get_state_abbreviation <- function(input_code) {
+  # Check if input is a FIPS code
+  if (input_code %in% state_info$fips_code) {
+    state_row <- state_info[state_info$fips_code == input_code, ]
+  } else if (input_code %in% state_info$state_abb) {  # Check if input is a state abbreviation
+    state_row <- state_info[state_info$state_abb == input_code, ]
+  } else {
+    stop("Invalid FIPS code or state abbreviation provided.")
+  }
+  
+  return(state_row$state_abb)  # Return the state abbreviation
+}
+
+# Function to get data for a specific year, FIPS code, or state abbreviation, and variable(s)
+get_data_for_year_state_vars <- function(year_input, input_code, variables) {
+  
+  # Get the state abbreviation from either FIPS code or state abbreviation
+  state_input <- get_state_abbreviation(input_code)
+  
+  # Get data for specified variables
+  data <- get_acs(geography = "state",
+                  variables = variables,
+                  state = state_input,
+                  year = year_input,
+                  survey = "acs1")
+  
+  # Add the year column to the data
+  data <- data %>%
+    mutate(year = year_input)
+  
+  return(data)
+}
+
+# Input FIPS code or state abbreviation and year here
+year_input <- 2014
+input_code <- "SC"  # FIPS code or state abbreviation here
+
+# Get median household income and median age for Black population
+variables <- c("B19013B_001", "B01002B_001")
+data <- get_data_for_year_state_vars(year_input, input_code, variables)
+
+print(data)
+
+```
+
+
+# Block to get specific variable details using var and year
+```{r}
+# Load necessary libraries
+library(tidycensus)
+library(dplyr)
+
+# Set your Census API key
+census_api_key("e06a3ef2522b01fbf59f0fb986f724a11ed67dd2", overwrite = TRUE)
+
+# Function to retrieve variable details by inputting variable code
+get_variable_details <- function(variable_code, year = 2020, dataset = "acs1") {
+  
+  # Load all available variables for the specified year and dataset
+  variables <- load_variables(year = year, dataset = dataset)
+  
+  # Filter for the specific variable code
+  variable_details <- variables %>%
+    filter(name == variable_code)
+  
+  # Check if the variable exists
+  if (nrow(variable_details) == 0) {
+    message("Variable not found. Please check the variable code and try again.")
+  } else {
+    return(variable_details)
+  }
+}
+
+#input var here
+variable_code <- "B01002B_001"  # Replace with any variable code you want details for
+year <- 2019  # Specify the year of interest
+dataset <- "acs1"  # Specify the dataset (e.g., "acs1" for 1-year ACS estimates)
+
+# Get details for the specified variable
+variable_info <- get_variable_details(variable_code, year, dataset)
+print(variable_info)
+
+```
+
+
+BLock of code to get table needed with variable details
+```{r}
+# Load necessary libraries
+library(tidycensus)
+library(dplyr)
+
+# Set your Census API key
+census_api_key("e06a3ef2522b01fbf59f0fb986f724a11ed67dd2", overwrite = TRUE)
+
+# Function to retrieve variable details and data for a specific year, FIPS code or state abbreviation, and variable(s)
+get_data_with_variable_details <- function(year_input, input_code, variables, dataset = "acs1") {
+  
+  # Load variable details for the specified year and dataset
+  variable_details <- load_variables(year = year_input, dataset = dataset) %>%
+    filter(name %in% variables)
+  
+  # Check if any variables were not found
+  if (nrow(variable_details) == 0) {
+    stop("One or more variables not found. Please check the variable codes.")
+  }
+  
+  # Get the data for specified variables
+  data <- get_acs(geography = "state",
+                  variables = variables,
+                  state = input_code,
+                  year = year_input,
+                  survey = dataset) %>%
+    mutate(year = year_input)  # Add the year column
+  
+  # Merge the variable details with the ACS data
+  enriched_data <- data %>%
+    left_join(variable_details, by = c("variable" = "name")) %>%
+    select(GEOID, NAME, year, variable, label, concept, estimate, moe)
+  
+  return(enriched_data)
+}
+
+# Input your year, FIPS code or state abbreviation, and variable codes here
+year_input <- 2022
+input_code <- "SC"  # You can use a FIPS code or state abbreviation
+variables <- c("B19013B_001", "B01002B_001")  # Median household income for Black and median age for Black
+
+# Retrieve data with variable labels and concepts
+data_with_details <- get_data_with_variable_details(year_input, input_code, variables)
+print(data_with_details)
+```
+
+#Block of code to get table with variable details using year, state fips code/abbreviation and var
+```{r}
+# Load necessary libraries
+library(tidycensus)
+library(dplyr)
+
+# Set your Census API key
+census_api_key("e06a3ef2522b01fbf59f0fb986f724a11ed67dd2", overwrite = TRUE)
+
+# Function to retrieve variable details and data for a specific year, FIPS code or state abbreviation, and variable(s)
+get_data_with_variable_details <- function(year_input, input_code, variables, dataset = "acs1") {
+  
+  # Load variable details for the specified year and dataset
+  variable_details <- load_variables(year = year_input, dataset = dataset) %>%
+    filter(name %in% variables)
+  
+  # Check if any variables were not found
+  if (nrow(variable_details) == 0) {
+    stop("One or more variables not found. Please check the variable codes.")
+  }
+  
+  # Get the data for specified variables
+  data <- get_acs(geography = "state",
+                  variables = variables,
+                  state = input_code,
+                  year = year_input,
+                  survey = dataset) %>%
+    mutate(year = year_input)  # Add the year column
+  
+  # Merge the variable details with the ACS data
+  enriched_data <- data %>%
+    left_join(variable_details, by = c("variable" = "name")) %>%
+    select(NAME, year, label, concept, estimate, moe)  # Exclude variable and GEOID columns here
+  
+  return(enriched_data)
+}
+
+# Input your year, FIPS code or state abbreviation, and variable codes here
+year_input <- 2022
+input_code <- c("SC", "NC", "MD")  # You can use a FIPS code or state abbreviation
+variables <- c("B19013B_001", "B01002B_001")  # Median household income for Black and median age for Black
+
+# Retrieve data with variable labels and concepts
+data_with_details <- get_data_with_variable_details(year_input, input_code, variables)
+print(data_with_details)
+```
+
+
+#Block to save as csv file for use in any IDE
+```{r}
+write.csv(data_with_details, file = "data_with_details_output.csv", row.names = FALSE)
+```
+
